@@ -1,0 +1,1068 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SafeDrive Insurance — Claim Risk Dashboard</title>
+<meta name="description" content="Claim-risk analytics for a 58,592-policy motor insurance portfolio: what drives claims, and how policies stratify into four risk bands.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#0F2233;
+    --ink-soft:#2A4257;
+    --muted:#5D7285;
+    --paper:#EDF0F3;
+    --surface:#FFFFFF;
+    --rule:#D3DBE3;
+    --rule-soft:#E5EAEF;
+
+    /* Risk ramp — mirrors the notebook figures exactly */
+    --low:#2471A3;
+    --medium:#5DADE2;
+    --high:#E59866;
+    --veryhigh:#C0392B;
+
+    --signal:#E08A1E;
+
+    --display:"Bricolage Grotesque","Trebuchet MS",system-ui,sans-serif;
+    --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+    --mono:"IBM Plex Mono","SFMono-Regular",Consolas,monospace;
+
+    --maxw:1180px;
+  }
+
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:var(--body);
+    font-size:16px;
+    line-height:1.55;
+  }
+
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 24px}
+
+  /* ---------- masthead ---------- */
+  .masthead{
+    background:var(--ink);
+    color:#fff;
+    padding:56px 0 44px;
+    border-bottom:3px solid var(--signal);
+  }
+  .eyebrow{
+    font-family:var(--mono);
+    font-size:12px;
+    letter-spacing:.16em;
+    text-transform:uppercase;
+    color:#9FB6C8;
+    margin:0 0 18px;
+  }
+  .masthead h1{
+    font-family:var(--display);
+    font-weight:800;
+    font-size:clamp(34px,6vw,60px);
+    line-height:1.02;
+    letter-spacing:-.02em;
+    margin:0 0 16px;
+    max-width:19ch;
+  }
+  .masthead h1 em{font-style:normal;color:var(--signal)}
+  .standfirst{
+    max-width:62ch;
+    font-size:clamp(15px,1.7vw,18px);
+    color:#C6D5E0;
+    margin:0 0 28px;
+  }
+  .chips{display:flex;flex-wrap:wrap;gap:8px;list-style:none;padding:0;margin:0}
+  .chips li{
+    font-family:var(--mono);
+    font-size:11.5px;
+    letter-spacing:.06em;
+    text-transform:uppercase;
+    border:1px solid #33506B;
+    color:#A9C0D2;
+    padding:5px 10px;
+    border-radius:2px;
+  }
+
+  /* ---------- model switch ---------- */
+  .switchbar{
+    position:sticky;top:0;z-index:20;
+    background:rgba(255,255,255,.94);
+    backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--rule);
+  }
+  .switchbar .wrap{
+    display:flex;flex-wrap:wrap;align-items:center;gap:14px;
+    padding-top:12px;padding-bottom:12px;
+  }
+  .switch-label{
+    font-family:var(--mono);font-size:11px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--muted);
+  }
+  .switch{display:flex;border:1px solid var(--ink);border-radius:2px;overflow:hidden}
+  .switch button{
+    font-family:var(--body);font-size:13.5px;font-weight:500;
+    background:transparent;color:var(--ink);
+    border:0;padding:7px 16px;cursor:pointer;
+  }
+  .switch button + button{border-left:1px solid var(--ink)}
+  .switch button[aria-pressed="true"]{background:var(--ink);color:#fff}
+  .switch button:focus-visible{outline:3px solid var(--signal);outline-offset:-3px}
+  .switch-note{font-size:13px;color:var(--muted);margin-left:auto}
+
+  /* ---------- sections ---------- */
+  section{padding:56px 0}
+  section + section{border-top:1px solid var(--rule)}
+  .sec-head{margin-bottom:28px;max-width:70ch}
+  .sec-num{
+    font-family:var(--mono);font-size:11.5px;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--signal);display:block;margin-bottom:8px;
+  }
+  .sec-head h2{
+    font-family:var(--display);font-weight:700;
+    font-size:clamp(24px,3.4vw,34px);letter-spacing:-.015em;
+    margin:0 0 10px;line-height:1.12;
+  }
+  .sec-head p{margin:0;color:var(--ink-soft);font-size:16px}
+
+  /* ---------- KPI strip ---------- */
+  .kpis{
+    display:grid;gap:1px;background:var(--rule);
+    grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
+    border:1px solid var(--rule);
+  }
+  .kpi{background:var(--surface);padding:22px 20px}
+  .kpi dt{
+    font-family:var(--mono);font-size:11px;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--muted);margin:0 0 10px;
+  }
+  .kpi dd{
+    margin:0;font-family:var(--mono);font-weight:600;
+    font-size:clamp(26px,3.6vw,34px);letter-spacing:-.02em;line-height:1;
+  }
+  .kpi .kpi-sub{
+    display:block;font-family:var(--body);font-weight:400;
+    font-size:12.5px;color:var(--muted);margin-top:9px;letter-spacing:0;
+  }
+
+  /* ---------- risk ladder (signature) ---------- */
+  .ladder-frame{
+    background:var(--surface);border:1px solid var(--rule);
+    padding:32px 28px 26px;
+  }
+  .ladder-key{
+    display:flex;flex-wrap:wrap;gap:18px;align-items:center;
+    font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;
+    text-transform:uppercase;color:var(--muted);margin-bottom:26px;
+  }
+  .key-baseline{display:inline-flex;align-items:center;gap:7px}
+  .key-baseline i{width:2px;height:15px;background:repeating-linear-gradient(var(--ink) 0 3px,transparent 3px 6px);display:block}
+  .rung{
+    display:grid;
+    grid-template-columns:172px 1fr 84px;
+    gap:18px;align-items:center;
+    padding:15px 0;
+  }
+  .rung + .rung{border-top:1px solid var(--rule-soft)}
+  .rung-name{
+    font-family:var(--display);font-weight:700;font-size:19px;letter-spacing:-.01em;
+    display:flex;align-items:center;gap:9px;
+  }
+  .swatch{width:11px;height:22px;flex:0 0 11px;border-radius:1px}
+  .rung-share{
+    display:block;font-family:var(--mono);font-weight:400;font-size:11.5px;
+    color:var(--muted);letter-spacing:.02em;margin-top:3px;
+  }
+  .rung-track{
+    position:relative;height:34px;background:var(--paper);
+    border-left:2px solid var(--ink);
+  }
+  .rung-fill{
+    height:100%;width:0;
+    transition:width .85s cubic-bezier(.22,.75,.3,1);
+  }
+  .rung-mark{
+    position:absolute;top:-4px;bottom:-4px;width:0;
+    border-left:2px dashed var(--ink);opacity:.75;
+  }
+  .rung-val{
+    position:absolute;top:50%;transform:translate(-100%,-50%);
+    font-family:var(--mono);font-weight:600;font-size:14px;
+    padding-right:12px;white-space:nowrap;
+  }
+  .rung-lift{
+    font-family:var(--mono);font-weight:600;font-size:17px;text-align:right;
+  }
+  .rung-lift span{display:block;font-size:10.5px;font-weight:400;color:var(--muted);letter-spacing:.08em;text-transform:uppercase}
+  .ladder-foot{
+    margin:22px 0 0;padding-top:18px;border-top:1px solid var(--rule);
+    font-size:14.5px;color:var(--ink-soft);max-width:78ch;
+  }
+  .ladder-foot strong{font-family:var(--mono);font-weight:600}
+
+  /* ---------- generic bar chart ---------- */
+  .grid2{display:grid;gap:26px;grid-template-columns:repeat(auto-fit,minmax(330px,1fr))}
+  .card{background:var(--surface);border:1px solid var(--rule);padding:24px 22px}
+  .card h3{
+    font-family:var(--display);font-weight:700;font-size:18px;
+    margin:0 0 4px;letter-spacing:-.01em;
+  }
+  .card .card-sub{
+    font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--muted);margin:0 0 20px;
+  }
+  .card .card-note{
+    margin:18px 0 0;padding-top:14px;border-top:1px solid var(--rule-soft);
+    font-size:13.5px;color:var(--ink-soft);
+  }
+  .bars{display:flex;flex-direction:column;gap:9px}
+  .bar-row{display:grid;grid-template-columns:104px 1fr 92px;gap:12px;align-items:center}
+  .bar-label{font-family:var(--mono);font-size:11.5px;color:var(--ink-soft);text-align:right;letter-spacing:.01em}
+  .bar-track{position:relative;height:20px;background:var(--paper)}
+  .bar-fill{height:100%;width:0;background:var(--ink-soft);transition:width .7s cubic-bezier(.22,.75,.3,1)}
+  .bar-fill.over{background:var(--signal)}
+  .bar-mark{position:absolute;top:-3px;bottom:-3px;border-left:2px dashed var(--ink);opacity:.6}
+  .bar-val{font-family:var(--mono);font-size:12px;color:var(--ink)}
+  .bar-val span{color:var(--muted)}
+  .bars.tall .bar-row{grid-template-columns:60px 1fr 116px}
+  .bars.wide .bar-row{grid-template-columns:224px 1fr 88px}
+  .bars.wide .bar-label{font-size:11px}
+
+  /* ---------- table ---------- */
+  .tablewrap{overflow-x:auto;background:var(--surface);border:1px solid var(--rule)}
+  table{border-collapse:collapse;width:100%;min-width:660px}
+  caption{text-align:left;padding:20px 22px 0;font-family:var(--display);font-weight:700;font-size:18px}
+  th,td{padding:13px 16px;text-align:right;border-bottom:1px solid var(--rule-soft);font-family:var(--mono);font-size:13.5px}
+  th:first-child,td:first-child{text-align:left;font-family:var(--body);font-size:14.5px}
+  thead th{
+    font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--muted);border-bottom:1px solid var(--rule);font-weight:500;
+  }
+  tbody tr:last-child td{border-bottom:0}
+  tr.is-selected td{background:#FBF4E9;font-weight:600}
+  tr.is-selected td:first-child{box-shadow:inset 3px 0 0 var(--signal)}
+  .tag{
+    font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+    border:1px solid var(--rule);padding:2px 6px;margin-left:8px;color:var(--muted);
+  }
+
+  /* ---------- confusion matrix ---------- */
+  .cm{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--rule);border:1px solid var(--rule)}
+  .cm-cell{background:var(--surface);padding:18px 16px}
+  .cm-cell .cm-k{font-family:var(--mono);font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+  .cm-cell .cm-v{font-family:var(--mono);font-size:26px;font-weight:600;line-height:1}
+  .cm-cell.good .cm-v{color:var(--low)}
+  .cm-cell.bad .cm-v{color:var(--veryhigh)}
+
+  /* ---------- findings ---------- */
+  .findings{display:grid;gap:1px;background:var(--rule);border:1px solid var(--rule)}
+  .finding{background:var(--surface);padding:26px 24px;display:grid;grid-template-columns:44px 1fr;gap:18px}
+  .finding .verdict{
+    font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.06em;
+    writing-mode:vertical-rl;text-orientation:mixed;text-transform:uppercase;
+    padding:4px 0;border-left:3px solid var(--rule);padding-left:9px;
+  }
+  .finding .verdict.confirmed{border-color:var(--low);color:var(--low)}
+  .finding .verdict.rejected{border-color:var(--veryhigh);color:var(--veryhigh)}
+  .finding .verdict.partial{border-color:var(--signal);color:var(--signal)}
+  .finding h3{font-family:var(--display);font-weight:700;font-size:18.5px;margin:0 0 8px;letter-spacing:-.01em}
+  .finding p{margin:0;color:var(--ink-soft);font-size:15px;max-width:72ch}
+
+  .actions{list-style:none;padding:0;margin:0;display:grid;gap:1px;background:var(--rule);border:1px solid var(--rule)}
+  .actions li{background:var(--surface);padding:22px 24px;display:grid;grid-template-columns:auto 1fr;gap:18px;align-items:baseline}
+  .actions .who{
+    font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+    color:#fff;background:var(--ink);padding:4px 9px;white-space:nowrap;
+  }
+  .actions strong{display:block;font-family:var(--display);font-size:17px;font-weight:700;margin-bottom:5px}
+  .actions p{margin:0;color:var(--ink-soft);font-size:14.5px;max-width:74ch}
+
+  .caveat{
+    background:var(--surface);border:1px solid var(--rule);border-left:4px solid var(--signal);
+    padding:24px;margin-top:26px;
+  }
+  .caveat h3{font-family:var(--display);font-size:17px;margin:0 0 10px}
+  .caveat ul{margin:0;padding-left:20px;color:var(--ink-soft);font-size:14.5px}
+  .caveat li + li{margin-top:7px}
+
+  footer{background:var(--ink);color:#A9C0D2;padding:48px 0 56px;font-size:14px}
+  footer h2{font-family:var(--display);color:#fff;font-size:19px;margin:0 0 16px}
+  footer .cols{display:grid;gap:28px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+  footer dt{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#7E9AB0;margin-bottom:5px}
+  footer dd{margin:0 0 14px;color:#D3E1EA;font-family:var(--mono);font-size:13px}
+  footer p{max-width:70ch;margin:0}
+  footer a{color:#fff}
+
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+
+  @media (max-width:720px){
+    .rung{grid-template-columns:1fr;gap:8px}
+    .rung-lift{text-align:left}
+    .bar-row{grid-template-columns:88px 1fr 78px}
+    .bars.tall .bar-row{grid-template-columns:48px 1fr 100px}
+    .bars.wide .bar-row{grid-template-columns:1fr;gap:4px}
+    .bars.wide .bar-label{text-align:left}
+    .finding{grid-template-columns:1fr}
+    .finding .verdict{writing-mode:horizontal-tb;border-left:0;border-bottom:3px solid var(--rule);padding-left:0;padding-bottom:6px;justify-self:start}
+    .actions li{grid-template-columns:1fr}
+    .switch-note{margin-left:0;width:100%}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .rung-fill,.bar-fill{transition:none}
+  }
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <div class="wrap">
+    <p class="eyebrow">SafeDrive Insurance Ltd. · Underwriting &amp; Risk Analytics</p>
+    <h1>Six percent of policies file a claim. <em>Finding which six</em> is the whole job.</h1>
+    <p class="standfirst">
+      A claim-risk model built on 58,592 motor policies, scored on 11,719 held-out policies and
+      translated into four underwriting bands. The top band claims at nearly five times the rate
+      of the bottom one — and the strongest signal in the book is not the car.
+    </p>
+    <ul class="chips">
+      <li>58,592 policies</li>
+      <li>106 modelled features</li>
+      <li>80/20 stratified split</li>
+      <li>Champion: tuned decision tree</li>
+      <li>Test ROC-AUC 0.646</li>
+    </ul>
+  </div>
+</header>
+
+<div class="switchbar">
+  <div class="wrap">
+    <span class="switch-label" id="switch-label">Scoring model</span>
+    <div class="switch" role="group" aria-labelledby="switch-label">
+      <button type="button" data-model="champion" aria-pressed="true">Champion tree</button>
+      <button type="button" data-model="automl" aria-pressed="false">AutoML tree</button>
+    </div>
+    <span class="switch-note" id="switch-note"></span>
+  </div>
+</div>
+
+<main>
+
+<!-- ============ PORTFOLIO ============ -->
+<section aria-labelledby="s-portfolio">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="sec-num">Portfolio</span>
+      <h2 id="s-portfolio">Where the book stands today</h2>
+      <p>Counts cover the full portfolio. The high-risk figure counts only the 11,719 held-out
+         policies the model has actually scored — training policies are deliberately left unbanded.</p>
+    </div>
+    <dl class="kpis">
+      <div class="kpi"><dt>Total policies</dt><dd>58,592<span class="kpi-sub">Unique policy IDs, no duplicates</span></dd></div>
+      <div class="kpi"><dt>Total claims</dt><dd>3,748<span class="kpi-sub">Filed during the policy period</span></dd></div>
+      <div class="kpi"><dt>Claim rate</dt><dd>6.40%<span class="kpi-sub">14.6 : 1 class imbalance</span></dd></div>
+      <div class="kpi"><dt>High-risk policies</dt><dd id="kpi-highrisk">4,412<span class="kpi-sub" id="kpi-highrisk-sub">High + Very High, of 11,719 scored</span></dd></div>
+      <div class="kpi"><dt>Average NCAP rating</dt><dd>1.76<span class="kpi-sub">Out of 5 · 33% of the book unrated</span></dd></div>
+    </dl>
+  </div>
+</section>
+
+<!-- ============ RISK LADDER ============ -->
+<section aria-labelledby="s-ladder">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="sec-num">The deliverable</span>
+      <h2 id="s-ladder">The risk ladder</h2>
+      <p>Every scored policy lands in one of four bands, cut at the 40th, 75th and 90th percentiles
+         of predicted probability. The bars show what actually happened to those policies — so the
+         ladder is a result, not a forecast.</p>
+    </div>
+
+    <div class="ladder-frame">
+      <div class="ladder-key">
+        <span class="key-baseline"><i aria-hidden="true"></i> Portfolio average 6.40%</span>
+        <span>Bar length = actual claim rate in the held-out set</span>
+      </div>
+      <div id="ladder"></div>
+      <p class="ladder-foot" id="ladder-foot"></p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ DRIVERS ============ -->
+<section aria-labelledby="s-drivers">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="sec-num">Risk drivers</span>
+      <h2 id="s-drivers">What actually moves claim risk</h2>
+      <p>Each group holds roughly the same number of policies, so the claim rates are directly
+         comparable. Amber bars sit above the 6.40% portfolio average.</p>
+    </div>
+    <div class="grid2">
+      <div class="card">
+        <h3>Policy tenure</h3>
+        <p class="card-sub">Quintiles · strongest single driver</p>
+        <div class="bars" id="c-tenure"></div>
+        <p class="card-note">Claim rate climbs from 3.6% to 8.7% — a 2.4× spread. Note this partly
+           reflects exposure: a policy held longer has had more time to generate a claim.</p>
+      </div>
+      <div class="card">
+        <h3>Tenure × policyholder age</h3>
+        <p class="card-sub">Quintiles · engineered interaction</p>
+        <div class="bars" id="c-interaction"></div>
+        <p class="card-note">The combination separates risk better than either parent alone — 3.5%
+           to 8.8%, a 2.5× spread. This is the single most useful engineered feature.</p>
+      </div>
+      <div class="card">
+        <h3>Policyholder age</h3>
+        <p class="card-sub">Quintiles · normalised scale</p>
+        <div class="bars" id="c-age"></div>
+        <p class="card-note">Risk rises with age, not the reverse. The oldest quintile claims at
+           7.1% against 5.6% for the youngest — a 1.3× spread.</p>
+      </div>
+      <div class="card">
+        <h3>Vehicle age</h3>
+        <p class="card-sub">Quintiles · normalised scale</p>
+        <div class="bars" id="c-car"></div>
+        <p class="card-note">Older vehicles claim <em>less</em>. Plausibly a claiming-behaviour
+           effect: minor damage on an old car is absorbed rather than claimed.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ CHALLENGED ============ -->
+<section aria-labelledby="s-challenged">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="sec-num">Assumptions tested</span>
+      <h2 id="s-challenged">Two underwriting beliefs the data does not support</h2>
+      <p>Both were stated as business questions at the outset. Both came back flat.</p>
+    </div>
+    <div class="grid2">
+      <div class="card">
+        <h3>Crash-safety rating</h3>
+        <p class="card-sub">Claim rate by NCAP stars</p>
+        <div class="bars" id="c-ncap"></div>
+        <p class="card-note">A 0.4-point spread across the whole scale, with no ordering. Four
+           independent methods agree: NCAP rating carries no claim signal in this portfolio.</p>
+      </div>
+      <div class="card">
+        <h3>Vehicle segment</h3>
+        <p class="card-sub">Claim rate by body segment</p>
+        <div class="bars" id="c-segment"></div>
+        <p class="card-note">A 1.0-point spread across six segments. What the customer drives says
+           far less about claim likelihood than who they are and how long they have been insured.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ GEOGRAPHY ============ -->
+<section aria-labelledby="s-geo">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="sec-num">Geography</span>
+      <h2 id="s-geo">Claim rate by area cluster</h2>
+      <p>Sorted high to low. Read the policy counts alongside the rates — the extremes at both ends
+         come from clusters holding only a few hundred policies, where a handful of claims moves the
+         number several points.</p>
+    </div>
+    <div class="card">
+      <div class="bars tall" id="c-area"></div>
+      <p class="card-note">Among the six clusters holding more than 3,000 policies, the spread
+         narrows to 4.7%–7.7%. C8 alone carries 13,654 policies — 23% of the book — at 6.99%,
+         slightly above average. Geography is a real but secondary effect.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ MODEL ============ -->
+<section aria-labelledby="s-model">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="sec-num">Model performance</span>
+      <h2 id="s-model">Three models, one held-out test set</h2>
+      <p>All three were fitted on identical rows with preprocessing fitted on training data only.
+         Selection was on ROC-AUC, fixed in advance, because the deliverable is a ranking rather
+         than a yes/no call.</p>
+    </div>
+
+    <div class="tablewrap">
+      <table>
+        <caption>Test-set metrics · 11,719 policies, 750 claims</caption>
+        <thead>
+          <tr>
+            <th scope="col">Model</th>
+            <th scope="col">ROC-AUC</th>
+            <th scope="col">Recall</th>
+            <th scope="col">Precision</th>
+            <th scope="col">F1</th>
+            <th scope="col">Accuracy</th>
+            <th scope="col">CV ROC-AUC</th>
+          </tr>
+        </thead>
+        <tbody id="model-table"></tbody>
+      </table>
+    </div>
+
+    <div class="grid2" style="margin-top:26px">
+      <div class="card">
+        <h3>Discrimination</h3>
+        <p class="card-sub">Test ROC-AUC · 0.50 = coin flip</p>
+        <div class="bars" id="c-auc"></div>
+        <p class="card-note">The tuned tree beats the linear baseline by six points of AUC.
+           Cross-validation confirms the gap is real, not a lucky split: 0.637 ± 0.009 against
+           0.610 ± 0.005.</p>
+      </div>
+      <div class="card">
+        <h3>Error profile at the default cut-off</h3>
+        <p class="card-sub" id="cm-sub">Champion tree · 11,719 policies</p>
+        <div class="cm" id="cm"></div>
+        <p class="card-note" id="cm-note"></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SHAP ============ -->
+<section aria-labelledby="s-shap">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="sec-num">Explainability</span>
+      <h2 id="s-shap">What the model is looking at</h2>
+      <p>Mean absolute SHAP value — how much each feature moves an individual prediction, averaged
+         across every scored policy. Features not shown contributed nothing.</p>
+    </div>
+    <div class="card">
+      <div class="bars wide" id="c-shap"></div>
+      <p class="card-note" id="shap-note"></p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FINDINGS ============ -->
+<section aria-labelledby="s-findings">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="sec-num">Business questions</span>
+      <h2 id="s-findings">The three questions we set out to answer</h2>
+    </div>
+    <div class="findings">
+      <article class="finding">
+        <span class="verdict confirmed">Confirmed</span>
+        <div>
+          <h3>Do policyholder age and policy tenure relate to claim likelihood?</h3>
+          <p>Yes, and they are the two clearest drivers in the data. Tenure moves the claim rate from
+             3.6% to 8.7% across quintiles; policyholder age from 5.6% to 7.1%. Their interaction is
+             stronger than either alone, and the model leans on tenure above everything else.</p>
+        </div>
+      </article>
+      <article class="finding">
+        <span class="verdict rejected">Rejected</span>
+        <div>
+          <h3>Do vehicle safety attributes reduce claim frequency?</h3>
+          <p>No measurable effect. NCAP rating is flat at 6.2%–6.7% across the whole scale, including
+             unrated vehicles. Safety-equipment count, airbags and individual safety flags are all
+             near-zero in the regression coefficients and contribute nothing in SHAP. The
+             "young driver in an unsafe car" flag built to the classic underwriting definition
+             actually claims <em>less</em> than the rest of the book — 5.7% against 6.6%.</p>
+        </div>
+      </article>
+      <article class="finding">
+        <span class="verdict partial">Partly</span>
+        <div>
+          <h3>Are certain geographies systematically riskier?</h3>
+          <p>Partly. Cluster claim rates span 3.9% to 10.7%, but the extremes sit in clusters holding
+             only 109–242 policies. Restricted to clusters above 3,000 policies the spread is a more
+             modest 4.7%–7.7%. Geography earns a place in the model but not a pricing lever on its own.</p>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ACTIONS ============ -->
+<section aria-labelledby="s-actions">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="sec-num">Recommendations</span>
+      <h2 id="s-actions">What to do with this</h2>
+      <p>The model produces a defensible ordering of risk. Every recommendation below is scoped to
+         what an ordering can support.</p>
+    </div>
+    <ul class="actions">
+      <li>
+        <span class="who">Underwriting</span>
+        <div>
+          <strong>Work the Very High band first</strong>
+          <p>761 policies — 6.5% of the scored book — claim at 15.0%, 2.3× the portfolio average.
+             That is a small enough queue for manual review to be economic, and concentrated enough
+             for the review to pay for itself.</p>
+        </div>
+      </li>
+      <li>
+        <span class="who">Pricing</span>
+        <div>
+          <strong>Treat tenure as a rating factor, not a loyalty discount</strong>
+          <p>Long-tenure policies claim at 8.6% against 5.1% for the rest — a 1.7× gap that current
+             pricing does not reflect. Confirm the exposure component first: part of this effect is
+             simply that older policies have had longer to produce a claim.</p>
+        </div>
+      </li>
+      <li>
+        <span class="who">Product</span>
+        <div>
+          <strong>Stop pricing on crash-safety rating</strong>
+          <p>NCAP shows no relationship with claim frequency anywhere in this analysis. Any discount
+             currently justified by safety rating is unsupported by the portfolio's own experience
+             and should be re-derived or withdrawn.</p>
+        </div>
+      </li>
+      <li>
+        <span class="who">Data</span>
+        <div>
+          <strong>Close the gap that is capping accuracy</strong>
+          <p>ROC-AUC of 0.646 is a ceiling set by the data, not the method — brute-force generation
+             of 342 candidate interaction features improved on the hand-built set by nothing.
+             Driving behaviour, prior claim history, mileage and telematics are the missing inputs.</p>
+        </div>
+      </li>
+      <li>
+        <span class="who">Risk</span>
+        <div>
+          <strong>Monitor before you rely on it</strong>
+          <p>The versioned model ships with a drift report comparing live scoring data against the
+             training distribution. Re-run it monthly and retrain when band claim rates stop
+             increasing monotonically — that is the signal the ranking has stopped working.</p>
+        </div>
+      </li>
+    </ul>
+
+    <div class="caveat">
+      <h3>Read the model with these limits in mind</h3>
+      <ul>
+        <li><strong>Discrimination is modest.</strong> ROC-AUC 0.646 supports triage and prioritisation.
+            It does not support automated decline, and it is not a rating engine.</li>
+        <li><strong>Precision is low by design.</strong> At the default cut-off, roughly 11 policies are
+            flagged for every genuine claim caught. Use the bands to rank a review queue, not to
+            reject business.</li>
+        <li><strong>Tenure carries exposure.</strong> Longer-held policies have had more time to claim.
+            Isolating the true risk effect needs an exposure-adjusted target.</li>
+        <li><strong>Small clusters are noisy.</strong> The highest and lowest geographic rates rest on
+            a few hundred policies each and should not drive regional pricing.</li>
+        <li><strong>Claim severity is out of scope.</strong> The model predicts whether a claim occurs,
+            never how much it costs.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <h2>Method &amp; reproducibility</h2>
+    <div class="cols">
+      <dl>
+        <dt>Data</dt>
+        <dd>58,592 policies · 44 raw columns · 0 missing · 0 duplicates</dd>
+        <dt>Preparation</dt>
+        <dd>IQR winsorisation, log transform on density, 17 flags encoded, 9 columns one-hot encoded</dd>
+        <dt>Feature selection</dt>
+        <dd>14 near-duplicate pairs removed at |r| &gt; 0.9, then iterative VIF elimination to VIF &lt; 10</dd>
+      </dl>
+      <dl>
+        <dt>Split</dt>
+        <dd>80/20 stratified · 46,873 train / 11,719 test · claim rate preserved at 6.40%</dd>
+        <dt>Models</dt>
+        <dd>Logistic regression (balanced) · decision tree tuned with Optuna, 25 trials, 3-fold CV</dd>
+        <dt>Validation</dt>
+        <dd>5-fold stratified CV · Box-Tidwell linearity test · train/test AUC gap 0.035</dd>
+      </dl>
+      <dl>
+        <dt>Tracking</dt>
+        <dd>MLflow, two experiments · joblib artifacts with JSON metadata · Evidently drift report</dd>
+        <dt>Explainability</dt>
+        <dd>SHAP TreeExplainer over all 11,719 scored policies</dd>
+        <dt>Seed</dt>
+        <dd>random_state = 42 throughout</dd>
+      </dl>
+    </div>
+    <p style="margin-top:28px">
+      Every figure on this page is taken from the notebook outputs or recomputed from
+      <code>cleaned_dataset.csv</code>. Claim rates shown by band are actual outcomes on held-out
+      policies, never in-sample predictions.
+    </p>
+  </div>
+</footer>
+
+<script>
+(function(){
+  "use strict";
+
+  var PORTFOLIO_RATE = 0.0640;
+
+  var DATA = {
+    models: {
+      champion: {
+        name: "Decision tree (Optuna-tuned)",
+        short: "Champion tree",
+        note: "Selected model — highest test ROC-AUC of the three.",
+        params: "max_depth 4 · min_samples_split 17 · balanced class weights",
+        metrics: {auc:0.6464, recall:0.6533, precision:0.0893, f1:0.1571, acc:0.5513, cv:"0.637 ± 0.009"},
+        cm: {tp:490, fn:260, fp:4997, tn:5972},
+        bands: [
+          {name:"Low",       n:4258, rate:0.0305, lift:0.48},
+          {name:"Medium",    n:3049, rate:0.0607, lift:0.95},
+          {name:"High",      n:3651, rate:0.0879, lift:1.37},
+          {name:"Very High", n:761,  rate:0.1498, lift:2.34}
+        ],
+        shap: [
+          {f:"policy_tenure", v:0.08349},
+          {f:"age_of_car", v:0.03836},
+          {f:"tenure_age_interaction", v:0.02851},
+          {f:"cylinder", v:0.01403},
+          {f:"height", v:0.01316},
+          {f:"gross_weight", v:0.01314},
+          {f:"area_cluster_C11", v:0.00257},
+          {f:"population_density_log", v:0.00226},
+          {f:"area_cluster_C18", v:0.00052}
+        ],
+        shapNote: "Policy tenure dominates at more than twice the influence of the next feature. "
+                + "Vehicle age is second and works in reverse to intuition. Every safety flag, "
+                + "airbag count and NCAP rating contributes exactly zero — the model never splits on them."
+      },
+      automl: {
+        name: "Decision tree + Featuretools",
+        short: "AutoML tree",
+        note: "342 candidate features synthesised, 3 retained, 1 actually used.",
+        params: "max_depth 3 · min_samples_split 44 · min_samples_leaf 19 · balanced class weights",
+        metrics: {auc:0.6336, recall:0.7013, precision:0.0879, f1:0.1562, acc:0.5152, cv:"0.635 ± 0.009"},
+        cm: {tp:526, fn:224, fp:5457, tn:5512},
+        bands: [
+          {name:"Low",       n:5100, rate:0.0373, lift:0.58},
+          {name:"Medium",    n:1760, rate:0.0608, lift:0.95},
+          {name:"High",      n:4248, rate:0.0859, lift:1.34},
+          {name:"Very High", n:611,  rate:0.1440, lift:2.25}
+        ],
+        shap: [
+          {f:"policy_tenure × width  (synthesised)", v:0.09009},
+          {f:"age_of_car", v:0.03414},
+          {f:"tenure_age_interaction", v:0.02438},
+          {f:"height", v:0.01198},
+          {f:"population_density_log", v:0.00324}
+        ],
+        shapNote: "The top feature here is a synthesised column, but the story is unchanged: width is "
+                + "near-constant across the portfolio, so policy_tenure × width is a rescaled tenure "
+                + "wearing a different label. The other two synthesised features rank 108th and 109th "
+                + "of 109 and never enter a single split."
+      }
+    },
+
+    baseline: {
+      name: "Logistic regression",
+      short: "Baseline",
+      metrics: {auc:0.5850, recall:0.5520, precision:0.0797, f1:0.1393, acc:0.5634, cv:"0.610 ± 0.005"}
+    },
+
+    tenure: [
+      {label:"0.00–0.14", n:11719, rate:0.0358},
+      {label:"0.14–0.42", n:11718, rate:0.0474},
+      {label:"0.42–0.77", n:11718, rate:0.0666},
+      {label:"0.77–1.08", n:11718, rate:0.0865},
+      {label:"1.08–1.40", n:11719, rate:0.0835}
+    ],
+    interaction: [
+      {label:"0.00–0.06", n:11719, rate:0.0352},
+      {label:"0.06–0.18", n:11718, rate:0.0496},
+      {label:"0.18–0.34", n:11718, rate:0.0704},
+      {label:"0.34–0.50", n:11718, rate:0.0763},
+      {label:"0.50–1.03", n:11719, rate:0.0883}
+    ],
+    age: [
+      {label:"0.29–0.36", n:12932, rate:0.0559},
+      {label:"0.36–0.42", n:11855, rate:0.0611},
+      {label:"0.42–0.49", n:11598, rate:0.0683},
+      {label:"0.49–0.57", n:10530, rate:0.0651},
+      {label:"0.57–0.82", n:11677, rate:0.0705}
+    ],
+    car: [
+      {label:"0.00–0.02", n:16808, rate:0.0694},
+      {label:"0.02–0.04", n:8178,  rate:0.0636},
+      {label:"0.04–0.08", n:12013, rate:0.0676},
+      {label:"0.08–0.12", n:10714, rate:0.0654},
+      {label:"0.12–0.24", n:10879, rate:0.0504}
+    ],
+    ncap: [
+      {label:"0 (unrated)", n:19097, rate:0.0624},
+      {label:"2 stars", n:21402, rate:0.0650},
+      {label:"3 stars", n:14018, rate:0.0643},
+      {label:"4 stars", n:2114,  rate:0.0629},
+      {label:"5 stars", n:1961,  rate:0.0668}
+    ],
+    segment: [
+      {label:"B2", n:18314, rate:0.0686},
+      {label:"C2", n:14018, rate:0.0643},
+      {label:"C1", n:3557,  rate:0.0641},
+      {label:"A",  n:17321, rate:0.0604},
+      {label:"Utility", n:1209, rate:0.0604},
+      {label:"B1", n:4173,  rate:0.0585}
+    ],
+    area: [
+      {label:"C18", n:242,   rate:0.1074},
+      {label:"C22", n:207,   rate:0.0821},
+      {label:"C14", n:3660,  rate:0.0768},
+      {label:"C4",  n:665,   rate:0.0767},
+      {label:"C21", n:379,   rate:0.0765},
+      {label:"C19", n:952,   rate:0.0746},
+      {label:"C3",  n:6101,  rate:0.0710},
+      {label:"C2",  n:7342,  rate:0.0708},
+      {label:"C8",  n:13654, rate:0.0699},
+      {label:"C6",  n:890,   rate:0.0618},
+      {label:"C11", n:1212,  rate:0.0594},
+      {label:"C5",  n:6979,  rate:0.0577},
+      {label:"C16", n:401,   rate:0.0574},
+      {label:"C13", n:3423,  rate:0.0570},
+      {label:"C12", n:1589,  rate:0.0548},
+      {label:"C1",  n:1468,  rate:0.0518},
+      {label:"C7",  n:2167,  rate:0.0503},
+      {label:"C9",  n:2734,  rate:0.0497},
+      {label:"C15", n:771,   rate:0.0493},
+      {label:"C10", n:3155,  rate:0.0469},
+      {label:"C20", n:109,   rate:0.0459},
+      {label:"C17", n:492,   rate:0.0386}
+    ]
+  };
+
+  var BAND_COLORS = {
+    "Low":"var(--low)", "Medium":"var(--medium)",
+    "High":"var(--high)", "Very High":"var(--veryhigh)"
+  };
+
+  // ---------- helpers ----------
+  function pct(x, dp){ return (x*100).toFixed(dp === undefined ? 2 : dp) + "%"; }
+  function num(x){ return x.toLocaleString("en-US"); }
+  function el(tag, cls, text){
+    var e = document.createElement(tag);
+    if(cls) e.className = cls;
+    if(text !== undefined) e.textContent = text;
+    return e;
+  }
+
+  var reduceMotion = window.matchMedia &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // ---------- generic bar chart ----------
+  function drawBars(node, rows, opts){
+    opts = opts || {};
+    node.innerHTML = "";
+    var max = opts.max || Math.max.apply(null, rows.map(function(r){ return r.rate; })) * 1.12;
+    var baseline = opts.baseline;
+
+    rows.forEach(function(r){
+      var row   = el("div","bar-row");
+      var label = el("div","bar-label", r.label);
+      var track = el("div","bar-track");
+      var fill  = el("div","bar-fill");
+
+      if(baseline !== undefined && r.rate > baseline) fill.classList.add("over");
+      if(opts.color) fill.style.background = opts.color(r);
+
+      track.appendChild(fill);
+
+      if(baseline !== undefined){
+        var mark = el("div","bar-mark");
+        mark.style.left = (baseline / max * 100) + "%";
+        track.appendChild(mark);
+      }
+
+      var val = el("div","bar-val");
+      val.appendChild(document.createTextNode(opts.fmt ? opts.fmt(r) : pct(r.rate)));
+      if(r.n !== undefined && opts.showN !== false){
+        val.appendChild(el("span", null, "  " + num(r.n)));
+      }
+
+      row.appendChild(label); row.appendChild(track); row.appendChild(val);
+      node.appendChild(row);
+
+      var target = Math.min(100, r.rate / max * 100);
+      if(reduceMotion){ fill.style.width = target + "%"; }
+      else { requestAnimationFrame(function(){
+        requestAnimationFrame(function(){ fill.style.width = target + "%"; });
+      }); }
+    });
+  }
+
+  // ---------- risk ladder ----------
+  function drawLadder(model){
+    var node = document.getElementById("ladder");
+    node.innerHTML = "";
+    var bands = model.bands;
+    var scored = bands.reduce(function(a,b){ return a + b.n; }, 0);
+    var max = 0.17;
+
+    bands.slice().reverse().forEach(function(b){
+      var rung  = el("div","rung");
+
+      var name  = el("div","rung-name");
+      var sw    = el("span","swatch");
+      sw.style.background = BAND_COLORS[b.name];
+      sw.setAttribute("aria-hidden","true");
+      var nameText = el("span");
+      nameText.appendChild(document.createTextNode(b.name));
+      nameText.appendChild(el("span","rung-share",
+        num(b.n) + " policies · " + (b.n/scored*100).toFixed(1) + "%"));
+      name.appendChild(sw); name.appendChild(nameText);
+
+      var track = el("div","rung-track");
+      var fill  = el("div","rung-fill");
+      fill.style.background = BAND_COLORS[b.name];
+      track.appendChild(fill);
+
+      var mark = el("div","rung-mark");
+      mark.style.left = (PORTFOLIO_RATE / max * 100) + "%";
+      track.appendChild(mark);
+
+      var val = el("div","rung-val", pct(b.rate));
+      val.style.left = Math.min(100, b.rate / max * 100) + "%";
+      val.style.color = (b.name === "Medium" || b.name === "High") ? "var(--ink)" : "#fff";
+      track.appendChild(val);
+
+      var lift = el("div","rung-lift");
+      lift.appendChild(document.createTextNode(b.lift.toFixed(2) + "×"));
+      lift.appendChild(el("span",null,"vs average"));
+
+      rung.appendChild(name); rung.appendChild(track); rung.appendChild(lift);
+      node.appendChild(rung);
+
+      var target = Math.min(100, b.rate / max * 100);
+      if(reduceMotion){ fill.style.width = target + "%"; }
+      else { requestAnimationFrame(function(){
+        requestAnimationFrame(function(){ fill.style.width = target + "%"; });
+      }); }
+    });
+
+    var top = bands[bands.length-1], bottom = bands[0];
+    document.getElementById("ladder-foot").innerHTML =
+      "Claim rates rise monotonically across all four bands — the test the model has to pass to be "
+      + "usable. The top band claims at <strong>" + pct(top.rate) + "</strong> against "
+      + "<strong>" + pct(bottom.rate) + "</strong> in the bottom band, a "
+      + "<strong>" + (top.rate/bottom.rate).toFixed(1) + "×</strong> spread, while carrying only "
+      + "<strong>" + (top.n/scored*100).toFixed(1) + "%</strong> of scored policies.";
+  }
+
+  // ---------- confusion matrix ----------
+  function drawCM(model){
+    var cm = model.cm, node = document.getElementById("cm");
+    node.innerHTML = "";
+    var cells = [
+      {k:"Claims caught",  v:cm.tp, cls:"good"},
+      {k:"Claims missed",  v:cm.fn, cls:"bad"},
+      {k:"False alarms",   v:cm.fp, cls:"bad"},
+      {k:"Correctly cleared", v:cm.tn, cls:"good"}
+    ];
+    cells.forEach(function(c){
+      var cell = el("div","cm-cell " + c.cls);
+      cell.appendChild(el("div","cm-k", c.k));
+      cell.appendChild(el("div","cm-v", num(c.v)));
+      node.appendChild(cell);
+    });
+    document.getElementById("cm-sub").textContent = model.short + " · 11,719 policies, 750 claims";
+    document.getElementById("cm-note").innerHTML =
+      "The model catches <strong>" + cm.tp + " of 750</strong> genuine claims ("
+      + pct(cm.tp/(cm.tp+cm.fn),1) + " recall) and flags <strong>" + num(cm.fp)
+      + "</strong> policies that never claim. That ratio is the cost of the imbalance, and it is why "
+      + "the output belongs in a review queue rather than a decline rule.";
+  }
+
+  // ---------- model table ----------
+  function drawTable(active){
+    var rows = [
+      {key:"baseline",  m:DATA.baseline,           tag:"Baseline"},
+      {key:"champion",  m:DATA.models.champion,    tag:"Champion"},
+      {key:"automl",    m:DATA.models.automl,      tag:"AutoML"}
+    ];
+    var tbody = document.getElementById("model-table");
+    tbody.innerHTML = "";
+    rows.forEach(function(r){
+      var tr = el("tr");
+      if(r.key === active) tr.className = "is-selected";
+      var td0 = el("td");
+      td0.appendChild(document.createTextNode(r.m.name));
+      td0.appendChild(el("span","tag", r.tag));
+      tr.appendChild(td0);
+      var mm = r.m.metrics;
+      [mm.auc.toFixed(4), pct(mm.recall,1), pct(mm.precision,1),
+       mm.f1.toFixed(3), pct(mm.acc,1), mm.cv].forEach(function(v){
+        tr.appendChild(el("td", null, v));
+      });
+      tbody.appendChild(tr);
+    });
+  }
+
+  // ---------- static charts ----------
+  drawBars(document.getElementById("c-tenure"),      DATA.tenure,      {max:0.10, baseline:PORTFOLIO_RATE});
+  drawBars(document.getElementById("c-interaction"), DATA.interaction, {max:0.10, baseline:PORTFOLIO_RATE});
+  drawBars(document.getElementById("c-age"),         DATA.age,         {max:0.10, baseline:PORTFOLIO_RATE});
+  drawBars(document.getElementById("c-car"),         DATA.car,         {max:0.10, baseline:PORTFOLIO_RATE});
+  drawBars(document.getElementById("c-ncap"),        DATA.ncap,        {max:0.10, baseline:PORTFOLIO_RATE});
+  drawBars(document.getElementById("c-segment"),     DATA.segment,     {max:0.10, baseline:PORTFOLIO_RATE});
+  drawBars(document.getElementById("c-area"),        DATA.area,        {max:0.12, baseline:PORTFOLIO_RATE});
+
+  drawBars(document.getElementById("c-auc"), [
+    {label:"Champion tree", rate:DATA.models.champion.metrics.auc},
+    {label:"AutoML tree",   rate:DATA.models.automl.metrics.auc},
+    {label:"Baseline LR",   rate:DATA.baseline.metrics.auc},
+    {label:"Coin flip",     rate:0.5}
+  ], {
+    max:0.75, baseline:0.5, showN:false,
+    fmt:function(r){ return r.rate.toFixed(4); },
+    color:function(r){ return r.label === "Coin flip" ? "var(--rule)" : "var(--ink-soft)"; }
+  });
+
+  // ---------- model-dependent render ----------
+  function render(key){
+    var model = DATA.models[key];
+
+    drawLadder(model);
+    drawCM(model);
+    drawTable(key);
+
+    var highRisk = model.bands.filter(function(b){
+      return b.name === "High" || b.name === "Very High";
+    }).reduce(function(a,b){ return a + b.n; }, 0);
+
+    document.getElementById("kpi-highrisk").firstChild.nodeValue = num(highRisk);
+    document.getElementById("kpi-highrisk-sub").textContent =
+      "High + Very High · " + model.short;
+
+    var maxShap = Math.max.apply(null, model.shap.map(function(s){ return s.v; })) * 1.1;
+    drawBars(document.getElementById("c-shap"),
+      model.shap.map(function(s){ return {label:s.f, rate:s.v}; }), {
+        max: maxShap, showN:false,
+        fmt: function(r){ return r.rate.toFixed(5); },
+        color: function(){ return "var(--ink-soft)"; }
+      });
+    document.getElementById("shap-note").textContent = model.shapNote;
+    document.getElementById("switch-note").textContent = model.params;
+
+    var btns = document.querySelectorAll(".switch button");
+    for(var i=0;i<btns.length;i++){
+      btns[i].setAttribute("aria-pressed", String(btns[i].dataset.model === key));
+    }
+  }
+
+  var btns = document.querySelectorAll(".switch button");
+  for(var i=0;i<btns.length;i++){
+    btns[i].addEventListener("click", function(){ render(this.dataset.model); });
+  }
+
+  render("champion");
+})();
+</script>
+</body>
+</html>
